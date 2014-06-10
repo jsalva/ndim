@@ -3,6 +3,8 @@ import os
 import re
 import json
 from datetime import datetime, timedelta
+import hashlib
+import time
 
 from fabric.api import env, hide, settings, cd, lcd
 from fabric.operations import local as lrun, run, sudo, put
@@ -64,15 +66,19 @@ def write_config(config_file, config_dict):
 
     return parse_config(config_file)
 
-config = parse_config('ndim.conf')
+config = parse_config('config/ndim.conf')
 
 @task
 def local():
     env.run = erun
     env.hosts = ['localhost']
+    env.local=True
+    env.LOCAL_DEPLOY=True
+    env.virtualenv = 'local'
 
 @task
 def remote_setup():
+    env.local = False
     env.run = run
     env.key_filename = config.get('credentials').get('ssh_key_path')
     env.user = config.get('user')
@@ -104,7 +110,7 @@ def remote_setup():
 
     # install pip remote requirements (obtained from requirements/remote.txt)
     with cd('/tmp'):
-        with prefix('source $(which virtualenvwrapper.sh) && workon remote'):
+        with prefix('source $(which virtualenvwrapper.sh) && workon remote || mkvirtualenv remote'):
             put(remote_requirements,'requirements.txt')
             run('pip install -r requirements.txt')
 
@@ -112,12 +118,56 @@ def remote_setup():
     sudo('rabbitmqctl stop; rabbitmq-server -detached',user='rabbitmq')
 
 @task
+def update_mysql():
+    """
+    Creates a default database and user with appropriate privileges
+    for local development
+    """
+
+    mysql_cmd = "create database {0};"+\
+    "create user {1}@\"{2}\" identified by \"{3}\";"+\
+    "create user {1}@localhost identified by \"{3}\";"+\
+    "grant all privileges on {0}.* to {1}@localhost;"+\
+    "grant all privileges on {0}.* to {1}@\"{2}\";exit;"
+
+    mysql_prompts = []
+    mysql_prompts += expect('mysql>',mysql_cmd.format(
+        config.get('env_vars').get("DATABASE_NAME"),
+        config.get('env_vars').get("DATABASE_USER"),
+        config.get('env_vars').get("DATABASE_CONSUMER",'%'),
+        config.get('env_vars').get("DATABASE_PASSWORD")))
+
+    with expecting(mysql_prompts):
+        erun('mysql -u root')
+
+def retry(callback, retry_number):
+    """
+    Calls a function until it returns True, or runs out of attempts
+
+    Paramters:
+    ==========
+
+        callback (function) - a function that returns a boolean success status
+
+        retry_number (integer) - the number of retry attempts
+
+    """
+    retries = 0
+    while retries < retry_number:
+        if callback():
+            return
+        retries += 1
+        time.sleep(1)
+    raise Exception('Tried %s times to execute' % retries)
+
+@task
 def deploy():
-    with prefix('source $(which virtualenvwrapper.sh) && workon remote'):
-        settings_file = '--settings=ndim.settings.base'
+    with prefix('source $(which virtualenvwrapper.sh) && workon %s || mkvirtualenv remote && pip install fexpect' % env.virtualenv):
         env_vars = config.get('env_vars')
+        if env.local:
+            env_vars.update({"LOCAL_DEPLOY":"True"})
         if not exists('~/projects'):
-            run('mkidr ~/projects')
+            run('mkdir ~/projects')
         if not exists('~/projects/ndim_project'):
                 run('git clone https://github.com/jsalva/ndim ~/projects/ndim_project')
         with cd('~/projects/ndim_project/ndim'):
@@ -125,16 +175,15 @@ def deploy():
                 run('mkdir logs')
             run('git pull origin master')
             with shell_env(**env_vars):
-                prompts = []
-                prompts += expect("Type 'yes' to continue","yes")
-                with expecting(prompts):
-                    erun('python manage.py collectstatic %s' % settings_file)
-                    erun('python manage.py migrate %s' % settings_file)
-                    erun('python manage.py syncdb %s' % settings_file)
-                    if exists('supervisord.pid'):
-                        erun('python manage.py supervisor reload %s' % settings_file)
-                    else:
-                        erun('python manage.py supervisor --daemonize %s' % settings_file)
+                run('python manage.py collectstatic --noinput')
+                run('python manage.py migrate')
+                run('python manage.py syncdb --noinput')
+                run('python manage.py supervisor shutdown')
+                def supervisord():
+                    with settings(warn_only=True):
+                        result = run('python manage.py supervisor --daemonize')
+                    return not result.failed
+                retry(supervisord, 10)
 
     if not exists('/tmp/nginx'):
         run('mkdir /tmp/nginx')
