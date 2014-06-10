@@ -1,0 +1,8 @@
+console.log("           ____  _                ")
+console.log("     _ __ |  _ \(_)_ __ ___       ") 
+console.log("    | '_ \| | | | | '_ ` _ \      ")
+console.log("    | | | | |_| | | | | | | |     ")
+console.log("    |_| |_|____/|_|_| |_| |_|     ")
+console.log("                                  ")
+console.log("  N Dimensional Dataset Viewer    ")
+console.log("          John Salvatore          ")
