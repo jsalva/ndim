@@ -28,6 +28,29 @@ def task(function):
     wrapped.__name__ = name
     return _task(wrapped)
 
+def randhash():
+    hash_algorithm = hashlib.sha1()
+    seed = str(datetime.now())
+    hash_algorithm.update(seed)
+    return  hash_algorithm.hexdigest()
+
+def render_to_file(template, destination_file, template_context={}):
+    from django.template import Template, Context
+    from django.conf import settings
+    settings.configure()
+
+    with open(template,'rb') as f:
+        content = f.read()
+
+    template_obj = Template(content)
+    context = Context(template_context)
+    rendered_content = template_obj.render(context)
+
+    with open(destination_file,'wb') as f:
+        f.write(rendered_content)
+
+    return destination_file
+
 def parse_config(config_file):
     with open(config_file,'rb') as f:
         config = json.load(f)
@@ -91,7 +114,7 @@ def remote_setup():
 @task
 def deploy():
     with prefix('source $(which virtualenvwrapper.sh) && workon remote'):
-        settings_file = '--settings=haxclub.settings.base'
+        settings_file = '--settings=ndim.settings.base'
         env_vars = config.get('env_vars')
         if not exists('~/projects'):
             run('mkidr ~/projects')
@@ -116,12 +139,22 @@ def deploy():
     if not exists('/tmp/nginx'):
         run('mkdir /tmp/nginx')
 
-    put('nginx.conf','/etc/nginx/nginx.conf',use_sudo=True)
-    put('nginx_ndim.conf','/etc/nginx/conf.d/nginx_haxclub.conf',use_sudo=True)
-    put('ssl/ndim.key','/etc/ssl/certs/haxclub.key',use_sudo=True)
-    put('ssl/ndim.crt','/etc/ssl/certs/haxclub.crt',use_sudo=True)
-    put('nginx_ndim.conf','/etc/nginx/conf.d/nginx_ndim.conf',use_sudo=True)
-    sudo('service nginx stop; service nginx start;')
+    AWS_DNS = env.host_string
+    hash_val = randhash()[:4]
+    conf_template = os.path.abspath('config/nginx/nginx_ndim.conf')
+    path, file_name = os.path.split(conf_template)
+    name, ext = file_name.split('.')
+
+    conf_rendered = '/tmp/{0}{1}.{2}'.format(name, hash_val, ext)
+    render_to_file(conf_template, conf_rendered, {'AWS_DNS':AWS_DNS})
+
+    if not env.local:
+        put('nginx.conf','/etc/nginx/nginx.conf',use_sudo=True)
+        put(conf_rendered,'/etc/nginx/conf.d/nginx_ndim.conf',use_sudo=True)
+        put('ssl/ndim.key','/etc/ssl/certs/ndim.key',use_sudo=True)
+        put('ssl/ndim.crt','/etc/ssl/certs/ndim.crt',use_sudo=True)
+        put('nginx_ndim.conf','/etc/nginx/conf.d/nginx_ndim.conf',use_sudo=True)
+        sudo('service nginx stop; service nginx start;')
 
 @task
 def aws():
