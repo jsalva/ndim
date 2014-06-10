@@ -54,3 +54,4 @@ docs/_build/
 
 ndim.conf
 *.pid
+celerybeat-schedule
