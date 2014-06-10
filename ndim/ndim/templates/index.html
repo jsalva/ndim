@@ -2,24 +2,7 @@
 {% load staticfiles %}
 
 {% block extra_css %}
-<style>
-    .feature {
-        font: 900 90px/100px "Helvetica Neue", Helvetica, Arial, sans-serif;
-        letter-spacing: -2px;
-        margin: 10px 0;
-    }
-    .feature small{
-        color: rgba(52, 73, 94, 0.30000000000000004);
-        display: block;
-        font-size: 22px;
-        font-weight: 700;
-        letter-spacing: 0;
-        padding-top: 5px;
-
-    }
-
-</style>
-
+    <link href="{% static 'css/style.css' %}" rel="stylesheet">
 {% endblock %}
 
 {% block title %}Home{% endblock title %}
@@ -49,4 +32,6 @@
 {% endblock content %}
 
 {% block extra_js %}
+<script src="{% static 'js/libs/d3.v3.min.js' %}"></script>
+<script src="{% static 'js/app.js' %}"></script>
 {% endblock extra_js %}

@@ -6,4 +6,5 @@ admin.autodiscover()
 urlpatterns = patterns('ndim.views',
     url(r'^$', 'index' ,name='ndim-index'),
 	url(r'^flatui/', include('flatui.urls',namespace='flatui')),
+    url(r'^data.csv$','data',name='ndim-data'),
 )
