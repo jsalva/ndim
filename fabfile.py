@@ -82,6 +82,7 @@ def remote_setup():
     env.run = run
     env.key_filename = config.get('credentials').get('ssh_key_path')
     env.user = config.get('user')
+    env.virtualenv = 'production'
 
     # make SURE python is 2.6; otherwise yum is dead.
     sudo('rm /usr/bin/python; ln -s /usr/bin/python2.6 /usr/bin/python;')
@@ -110,7 +111,7 @@ def remote_setup():
 
     # install pip remote requirements (obtained from requirements/remote.txt)
     with cd('/tmp'):
-        with prefix('source $(which virtualenvwrapper.sh) && workon remote || mkvirtualenv remote'):
+        with prefix('source $(which virtualenvwrapper.sh) && workon remote || mkvirtualenv %s' % env.virtualenv):
             put(remote_requirements,'requirements.txt')
             run('pip install -r requirements.txt')
 
@@ -118,7 +119,7 @@ def remote_setup():
     sudo('rabbitmqctl stop; rabbitmq-server -detached',user='rabbitmq')
 
 @task
-def update_mysql():
+def dbinit():
     """
     Creates a default database and user with appropriate privileges
     for local development
